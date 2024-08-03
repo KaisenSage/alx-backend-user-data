@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 import re
 import logging
+from typing import List
 import os
 import mysql.connector
-from typing import List
+from mysql.connector.connection import MySQLConnection
+import bcrypt
 
+# Task 0: Regex-ing
 def filter_datum(fields: List[str], redaction: str, message: str, separator: str) -> str:
     """
     Returns the log message obfuscated.
@@ -13,9 +16,9 @@ def filter_datum(fields: List[str], redaction: str, message: str, separator: str
         message = re.sub(f"{field}=.*?{separator}", f"{field}={redaction}{separator}", message)
     return message
 
+# Task 1: Log formatter
 class RedactingFormatter(logging.Formatter):
-    """ Redacting Formatter class
-    """
+    """ Redacting Formatter class """
 
     REDACTION = "***"
     FORMAT = "[HOLBERTON] %(name)s %(levelname)s %(asctime)-15s: %(message)s"
@@ -36,11 +39,12 @@ class RedactingFormatter(logging.Formatter):
         redacted_message = filter_datum(self.fields, self.REDACTION, original_message, self.SEPARATOR)
         return redacted_message
 
+# Task 2: Create logger
 PII_FIELDS = ("name", "email", "phone", "ssn", "password")
 
 def get_logger() -> logging.Logger:
     """
-    Returns a logger object.
+    Creates a logger object with specific settings.
     """
     logger = logging.getLogger("user_data")
     logger.setLevel(logging.INFO)
@@ -51,33 +55,35 @@ def get_logger() -> logging.Logger:
     logger.addHandler(stream_handler)
     return logger
 
-def get_db() -> mysql.connector.connection.MySQLConnection:
+# Task 3: Connect to secure database
+def get_db() -> MySQLConnection:
     """
-    Returns a connector to the database.
+    Connect to a secure MySQL database.
     """
-    username = os.getenv('PERSONAL_DATA_DB_USERNAME', 'root')
-    password = os.getenv('PERSONAL_DATA_DB_PASSWORD', '')
-    host = os.getenv('PERSONAL_DATA_DB_HOST', 'localhost')
-    db_name = os.getenv('PERSONAL_DATA_DB_NAME')
+    username = os.getenv("PERSONAL_DATA_DB_USERNAME", "root")
+    password = os.getenv("PERSONAL_DATA_DB_PASSWORD", "")
+    host = os.getenv("PERSONAL_DATA_DB_HOST", "localhost")
+    database = os.getenv("PERSONAL_DATA_DB_NAME")
+    
     return mysql.connector.connect(
         user=username,
         password=password,
         host=host,
-        database=db_name
+        database=database
     )
 
-def main():
+# Task 4: Read and filter data
+def main() -> None:
     """
-    Obtain a database connection and retrieve all rows in the users table,
-    then display each row under a filtered format.
+    Obtain a database connection and retrieve all rows in the users table.
+    Display each row under a filtered format.
     """
     db = get_db()
     cursor = db.cursor()
     cursor.execute("SELECT * FROM users;")
-    logger = get_logger()
-    fields = ["name", "email", "phone", "ssn", "password", "ip", "last_login", "user_agent"]
     for row in cursor:
-        message = "; ".join([f"{field}={value}" for field, value in zip(fields, row)])
+        message = f"name={row[0]};email={row[1]};phone={row[2]};ssn={row[3]};password={row[4]};ip={row[5]};last_login={row[6]};user_agent={row[7]};"
+        logger = get_logger()
         logger.info(message)
     cursor.close()
     db.close()
@@ -85,5 +91,17 @@ def main():
 if __name__ == "__main__":
     main()
 
+# Task 5: Encrypting passwords
+def hash_password(password: str) -> bytes:
+    """
+    Hash a password using bcrypt.
+    """
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt())
 
-~                              
+# Task 6: Check valid password
+def is_valid(hashed_password: bytes, password: str) -> bool:
+    """
+    Check if the provided password matches the hashed password.
+    """
+    return bcrypt.checkpw(password.encode(), hashed_password)
+
